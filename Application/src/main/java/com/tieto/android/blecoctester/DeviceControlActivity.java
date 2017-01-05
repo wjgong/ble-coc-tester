@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.example.android.bluetoothlegatt;
+package com.tieto.android.blecoctester;
 
 import android.app.Activity;
 import android.bluetooth.BluetoothGattCharacteristic;

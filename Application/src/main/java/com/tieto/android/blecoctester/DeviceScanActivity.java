@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.example.android.bluetoothlegatt;
+package com.tieto.android.blecoctester;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -42,7 +42,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
-import java.util.jar.Manifest;
 
 /**
  * Activity for scanning and displaying available Bluetooth LE devices.
