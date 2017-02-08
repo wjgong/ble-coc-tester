@@ -16,16 +16,20 @@
 
 package com.tieto.android.blecoctester;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.ListActivity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothServerSocket;
+import android.bluetooth.BluetoothSocket;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -41,22 +45,37 @@ import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.android.gms.appindexing.Action;
+import com.google.android.gms.appindexing.AppIndex;
+import com.google.android.gms.appindexing.Thing;
+import com.google.android.gms.common.api.GoogleApiClient;
+
+import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 
 /**
  * Activity for scanning and displaying available Bluetooth LE devices.
  */
 public class DeviceScanActivity extends ListActivity
-       implements ActivityCompat.OnRequestPermissionsResultCallback {
+        implements ActivityCompat.OnRequestPermissionsResultCallback {
+    private final String TAG = "DeviceScanActivity";
     private LeDeviceListAdapter mLeDeviceListAdapter;
     private BluetoothAdapter mBluetoothAdapter;
     private boolean mScanning;
     private Handler mHandler;
+    private BluetoothSocket mLeCocSocket;
 
     private static final int REQUEST_ENABLE_BT = 1;
     // Stops scanning after 10 seconds.
     private static final long SCAN_PERIOD = 10000;
     private static final int PERMISSION_REQUEST_COARSE_LOCATION = 1;
+    /**
+     * ATTENTION: This was auto-generated to implement the App Indexing API.
+     * See https://g.co/AppIndexing/AndroidStudio for more information.
+     */
+    private GoogleApiClient client;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -86,7 +105,7 @@ public class DeviceScanActivity extends ListActivity
 
         // Android M Permission check
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (this.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            if (this.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 final AlertDialog.Builder builder = new AlertDialog.Builder(this);
                 builder.setTitle(R.string.permission_title);
                 builder.setMessage(R.string.permission_msg);
@@ -94,12 +113,15 @@ public class DeviceScanActivity extends ListActivity
                 builder.setOnDismissListener(new DialogInterface.OnDismissListener() {
                     @Override
                     public void onDismiss(DialogInterface dialog) {
-                        requestPermissions(new String[]{android.Manifest.permission.ACCESS_COARSE_LOCATION}, PERMISSION_REQUEST_COARSE_LOCATION);
+                        requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, PERMISSION_REQUEST_COARSE_LOCATION);
                     }
                 });
                 builder.show();
             }
         }
+        // ATTENTION: This was auto-generated to implement the App Indexing API.
+        // See https://g.co/AppIndexing/AndroidStudio for more information.
+        client = new GoogleApiClient.Builder(this).addApi(AppIndex.API).build();
     }
 
     @Override
@@ -150,6 +172,9 @@ public class DeviceScanActivity extends ListActivity
                 break;
             case R.id.menu_stop:
                 scanLeDevice(false);
+                break;
+            case R.id.menu_refresh:
+                startLeCocServer();
                 break;
         }
         return true;
@@ -226,6 +251,97 @@ public class DeviceScanActivity extends ListActivity
         invalidateOptionsMenu();
     }
 
+    private void startLeCocServer() {
+        LeCocServerThread p = new LeCocServerThread();
+        p.start();
+    }
+
+    /**
+     * ATTENTION: This was auto-generated to implement the App Indexing API.
+     * See https://g.co/AppIndexing/AndroidStudio for more information.
+     */
+    public Action getIndexApiAction() {
+        Thing object = new Thing.Builder()
+                .setName("DeviceScan Page") // TODO: Define a title for the content shown.
+                // TODO: Make sure this auto-generated URL is correct.
+                .setUrl(Uri.parse("http://[ENTER-YOUR-URL-HERE]"))
+                .build();
+        return new Action.Builder(Action.TYPE_VIEW)
+                .setObject(object)
+                .setActionStatus(Action.STATUS_TYPE_COMPLETED)
+                .build();
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+
+        // ATTENTION: This was auto-generated to implement the App Indexing API.
+        // See https://g.co/AppIndexing/AndroidStudio for more information.
+        client.connect();
+        AppIndex.AppIndexApi.start(client, getIndexApiAction());
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+
+        // ATTENTION: This was auto-generated to implement the App Indexing API.
+        // See https://g.co/AppIndexing/AndroidStudio for more information.
+        AppIndex.AppIndexApi.end(client, getIndexApiAction());
+        client.disconnect();
+    }
+
+    private class LeCocServerThread extends Thread {
+        private final BluetoothServerSocket mmServerSocket;
+
+        public LeCocServerThread() {
+            BluetoothServerSocket tmp = null;
+
+            try {
+                Method m = mBluetoothAdapter.getClass().getMethod("listenUsingL2capOn", new Class[]{int.class});
+                Log.d(TAG, "get method listenUsingL2capOn() successfully");
+                tmp = (BluetoothServerSocket) m.invoke(mBluetoothAdapter, 0x20025);
+            } catch (NoSuchMethodException e) {
+                Log.e(TAG, "No such method listenUsingL2capOn()", e);
+            } catch (InvocationTargetException e) {
+                Log.e(TAG, "Invocation target exception", e);
+            } catch (IllegalAccessException e) {
+                Log.e(TAG, "Illegal access exception", e);
+            }
+            mmServerSocket = tmp;
+        }
+
+        public void run() {
+            BluetoothSocket socket = null;
+            while (true) {
+                try {
+                    socket = mmServerSocket.accept();
+                } catch (IOException e) {
+                    Log.e(TAG, "Socket's accept() method failed", e);
+                }
+
+                if (socket != null) {
+                    mLeCocSocket = socket;
+                    try {
+                        mmServerSocket.close();
+                    } catch (IOException e) {
+                        Log.e(TAG, "Failed to close server socket", e);
+                    }
+                    break;
+                }
+            }
+        }
+
+        public void cancel() {
+            try {
+                mmServerSocket.close();
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to close server socket", e);
+            }
+        }
+    }
+
     // Adapter for holding devices found through scanning.
     private class LeDeviceListAdapter extends BaseAdapter {
         private ArrayList<BluetoothDevice> mLeDevices;
@@ -238,7 +354,7 @@ public class DeviceScanActivity extends ListActivity
         }
 
         public void addDevice(BluetoothDevice device) {
-            if(!mLeDevices.contains(device)) {
+            if (!mLeDevices.contains(device)) {
                 mLeDevices.add(device);
             }
         }
@@ -296,17 +412,17 @@ public class DeviceScanActivity extends ListActivity
     private BluetoothAdapter.LeScanCallback mLeScanCallback =
             new BluetoothAdapter.LeScanCallback() {
 
-        @Override
-        public void onLeScan(final BluetoothDevice device, int rssi, byte[] scanRecord) {
-            runOnUiThread(new Runnable() {
                 @Override
-                public void run() {
-                    mLeDeviceListAdapter.addDevice(device);
-                    mLeDeviceListAdapter.notifyDataSetChanged();
+                public void onLeScan(final BluetoothDevice device, int rssi, byte[] scanRecord) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            mLeDeviceListAdapter.addDevice(device);
+                            mLeDeviceListAdapter.notifyDataSetChanged();
+                        }
+                    });
                 }
-            });
-        }
-    };
+            };
 
     static class ViewHolder {
         TextView deviceName;
